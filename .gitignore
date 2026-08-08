@@ -1,0 +1,147 @@
+# ==========================================
+# AI Traffic Sign Recognition - .gitignore
+# ==========================================
+
+
+# ------------------------------------------
+# Python
+# ------------------------------------------
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python testing/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+
+# ------------------------------------------
+# Environment variables / Secrets
+# ------------------------------------------
+
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+
+# ------------------------------------------
+# Node.js / React / Vite
+# ------------------------------------------
+
+node_modules/
+frontend/node_modules/
+
+# Vite build output
+frontend/dist/
+dist/
+
+# Vite cache
+frontend/.vite/
+
+
+# ------------------------------------------
+# Dataset
+# ------------------------------------------
+
+# Don't upload training datasets
+dataset/raw/
+dataset/processed/
+dataset/yolo/
+
+
+# ------------------------------------------
+# ML Training Outputs
+# ------------------------------------------
+
+# YOLO training runs
+runs/
+ml/models/yolo/runs/
+
+# Python/ML cache
+ml/__pycache__/
+ml/**/__pycache__/
+
+
+# ------------------------------------------
+# Uploaded files
+# ------------------------------------------
+
+# Don't upload user-uploaded images/videos
+uploads/*
+
+# Keep the uploads directory in Git
+!uploads/.gitkeep
+
+
+# ------------------------------------------
+# IDE
+# ------------------------------------------
+
+.vscode/
+.idea/
+
+# VS Code settings
+*.code-workspace
+
+
+# ------------------------------------------
+# Operating System
+# ------------------------------------------
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ------------------------------------------
+# Logs
+# ------------------------------------------
+
+*.log
+logs/
+
+
+# ------------------------------------------
+# Temporary files
+# ------------------------------------------
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+
+# ------------------------------------------
+# Jupyter
+# ------------------------------------------
+
+.ipynb_checkpoints/
+
+
+# ------------------------------------------
+# Build / Coverage
+# ------------------------------------------
+
+coverage/
+htmlcov/
+.pytest_cache/
+
+
+# ------------------------------------------
+# Local test/output files
+# ------------------------------------------
+
+test-road.jpg
+test-road-detected.jpg
+test-sign.jpg
