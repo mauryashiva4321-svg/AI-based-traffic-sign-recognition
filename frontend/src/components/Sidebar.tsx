@@ -1,6 +1,5 @@
 import {
   Activity,
-  BarChart3,
   Contact,
   Camera,
   FileImage,

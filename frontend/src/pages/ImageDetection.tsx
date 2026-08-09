@@ -9,8 +9,6 @@ import type{
 import {
   Upload,
   ScanLine,
-  CheckCircle,
-  AlertCircle
 } from "lucide-react";
 
 import {
