@@ -1,175 +1,150 @@
-from ml.inference.detector import (
-    TrafficSignDetector
-)
+from ml.inference.detector import TrafficSignDetector
+from ml.inference.classifier import TrafficSignClassifier
 
-from ml.inference.classifier import (
-    TrafficSignClassifier
-)
-
-from ml.utils.image_utils import (
-    crop_image
-)
-
-from ml.utils.sign_information import (
-    get_sign_information
-)
+from ml.utils.image_utils import crop_image
+from ml.utils.sign_information import get_sign_information
 
 
 class DetectionPipeline:
+    """
+    Traffic sign detection + classification pipeline.
+
+    Models are loaded lazily:
+    - YOLO detector loads when the first prediction is requested.
+    - CNN classifier loads only when a detected sign needs classification.
+
+    This reduces unnecessary memory usage during startup.
+    """
 
     def __init__(self):
+        self.detector = None
+        self.classifier = None
 
-        self.detector = (
+    # =====================================================
+    # LAZY DETECTOR
+    # =====================================================
 
-            TrafficSignDetector()
+    def _get_detector(self):
+        if self.detector is None:
+            print("Loading traffic sign detector...")
 
-        )
+            self.detector = TrafficSignDetector()
 
+            print("Traffic sign detector loaded.")
 
-        self.classifier = (
+        return self.detector
 
-            TrafficSignClassifier()
+    # =====================================================
+    # LAZY CLASSIFIER
+    # =====================================================
 
-        )
+    def _get_classifier(self):
+        if self.classifier is None:
+            print("Loading traffic sign classifier...")
 
+            self.classifier = TrafficSignClassifier()
 
-    def predict(
+            print("Traffic sign classifier loaded.")
 
-        self,
+        return self.classifier
 
-        image
+    # =====================================================
+    # PREDICTION
+    # =====================================================
 
-    ) -> dict:
+    def predict(self, image) -> dict:
 
-        detections = (
+        if image is None:
+            raise ValueError("Input image is empty.")
 
-            self.detector.detect(
+        # -------------------------------------------------
+        # Object detection
+        # -------------------------------------------------
 
-                image
+        detector = self._get_detector()
 
-            )
-
-        )
-
+        detections = detector.detect(image)
 
         results = []
 
+        # -------------------------------------------------
+        # Classification
+        # -------------------------------------------------
 
         for detection in detections:
 
             try:
 
-                cropped_sign = (
+                bbox = detection.get("bbox")
 
-                    crop_image(
+                if not bbox:
+                    continue
 
-                        image,
-
-                        detection["bbox"]
-
-                    )
-
+                cropped_sign = crop_image(
+                    image,
+                    bbox,
                 )
 
+                if cropped_sign is None:
+                    continue
 
-                classification = (
+                classifier = self._get_classifier()
 
-                    self.classifier.predict(
-
-                        cropped_sign
-
-                    )
-
+                classification = classifier.predict(
+                    cropped_sign
                 )
 
-
-                information = (
-
-                    get_sign_information(
-
-                        classification[
-                            "class_name"
-                        ]
-
-                    )
-
+                class_name = classification.get(
+                    "class_name",
+                    "Unknown",
                 )
 
+                information = get_sign_information(
+                    class_name
+                )
 
-                results.append({
+                results.append(
+                    {
+                        "bbox": bbox,
 
-                    "bbox":
+                        "detector_confidence": detection.get(
+                            "detector_confidence",
+                            0.0,
+                        ),
 
-                    detection["bbox"],
+                        "class_id": classification.get(
+                            "class_id",
+                            -1,
+                        ),
 
+                        "class_name": class_name,
 
-                    "detector_confidence":
+                        "classification_confidence": classification.get(
+                            "confidence",
+                            0.0,
+                        ),
 
-                    detection[
-                        "detector_confidence"
-                    ],
+                        "description": information.get(
+                            "description",
+                            "",
+                        ),
 
-
-                    "class_id":
-
-                    classification[
-                        "class_id"
-                    ],
-
-
-                    "class_name":
-
-                    classification[
-                        "class_name"
-                    ],
-
-
-                    "classification_confidence":
-
-                    classification[
-                        "confidence"
-                    ],
-
-
-                    "description":
-
-                    information[
-                        "description"
-                    ],
-
-
-                    "recommended_action":
-
-                    information[
-                        "recommended_action"
-                    ]
-
-                })
-
+                        "recommended_action": information.get(
+                            "recommended_action",
+                            "",
+                        ),
+                    }
+                )
 
             except Exception as error:
 
                 print(
-
-                    f"Detection processing error: "
-                    f"{error}"
-
+                    f"Detection processing error: {error}"
                 )
 
+                continue
 
         return {
-
-            "total_detections":
-
-            len(
-
-                results
-
-            ),
-
-
-            "detections":
-
-            results
-
+            "total_detections": len(results),
+            "detections": results,
         }
