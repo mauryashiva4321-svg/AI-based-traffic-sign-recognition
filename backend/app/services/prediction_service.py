@@ -1,8 +1,10 @@
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 import cv2
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from backend.app.database.mongodb import get_predictions_collection
 from ml.inference.pipeline import DetectionPipeline
@@ -10,22 +12,66 @@ from ml.inference.pipeline import DetectionPipeline
 
 class PredictionService:
     """
-    Handles all AI prediction operations including:
+    Handles AI prediction operations:
     - Image prediction
     - Video prediction
-    - Live webcam prediction
+    - Live frame prediction
     - Prediction history
+    - Delete prediction
+
+    The DetectionPipeline is loaded lazily to reduce
+    memory usage during FastAPI startup.
     """
 
     def __init__(self):
-        self.pipeline = DetectionPipeline()
+        # IMPORTANT:
+        # Do not create DetectionPipeline() here.
+        # Loading TensorFlow/YOLO during application startup
+        # can cause high memory usage on limited servers.
+        self.pipeline = None
+
+        # MongoDB collection is also initialized lazily.
         self.predictions = None
+
+        # Prevent multiple simultaneous requests from loading
+        # the ML pipeline more than once.
+        self._pipeline_lock = Lock()
+
+    # =====================================================
+    # LAZY AI PIPELINE
+    # =====================================================
+
+    def _get_pipeline(self):
+        """
+        Load the AI detection pipeline only when it is
+        actually needed.
+        """
+
+        if self.pipeline is None:
+            with self._pipeline_lock:
+
+                # Double-check after acquiring the lock.
+                if self.pipeline is None:
+                    print("Loading AI detection pipeline...")
+
+                    self.pipeline = DetectionPipeline()
+
+                    print(
+                        "AI detection pipeline loaded successfully."
+                    )
+
+        return self.pipeline
+
+    # =====================================================
+    # MONGODB COLLECTION
+    # =====================================================
 
     def _get_predictions_collection(self):
         """
         Initialize MongoDB collection only after
         FastAPI has connected to MongoDB.
         """
+
         if self.predictions is None:
             self.predictions = get_predictions_collection()
 
@@ -57,15 +103,22 @@ class PredictionService:
                 "Unable to read image."
             )
 
-        prediction = self.pipeline.predict(image)
+        # Lazy-load AI pipeline.
+        pipeline = self._get_pipeline()
+
+        prediction = pipeline.predict(image)
 
         history = {
             "user_id": user_id,
             "filename": path.name,
             "prediction_type": "image",
-            "detections": prediction.get("detections", []),
+            "detections": prediction.get(
+                "detections",
+                []
+            ),
             "total_detections": prediction.get(
-                "total_detections", 0
+                "total_detections",
+                0
             ),
             "created_at": datetime.utcnow(),
         }
@@ -107,31 +160,43 @@ class PredictionService:
         results = []
         frame_number = 0
 
-        while True:
+        # Load pipeline once for the entire video.
+        pipeline = self._get_pipeline()
 
-            success, frame = capture.read()
+        try:
 
-            if not success:
-                break
+            while True:
 
-            frame_number += 1
+                success, frame = capture.read()
 
-            # Process every 10th frame
-            if frame_number % 10 != 0:
-                continue
+                if not success:
+                    break
 
-            prediction = self.pipeline.predict(frame)
+                frame_number += 1
 
-            if prediction.get("total_detections", 0) > 0:
+                # Process every 10th frame.
+                if frame_number % 10 != 0:
+                    continue
 
-                results.append(
-                    {
-                        "frame": frame_number,
-                        "detections": prediction["detections"],
-                    }
-                )
+                prediction = pipeline.predict(frame)
 
-        capture.release()
+                if prediction.get(
+                    "total_detections",
+                    0
+                ) > 0:
+
+                    results.append(
+                        {
+                            "frame": frame_number,
+                            "detections": prediction.get(
+                                "detections",
+                                []
+                            ),
+                        }
+                    )
+
+        finally:
+            capture.release()
 
         history = {
             "user_id": user_id,
@@ -158,27 +223,45 @@ class PredictionService:
     # =====================================================
 
     def predict_frame(self, frame) -> dict:
+        """
+        Predict a single webcam/live-detection frame.
+
+        The AI pipeline is loaded only when the first
+        live frame arrives.
+        """
 
         if frame is None:
             raise ValueError(
                 "Frame is empty."
             )
 
-        return self.pipeline.predict(frame)
+        pipeline = self._get_pipeline()
+
+        return pipeline.predict(frame)
 
     # =====================================================
     # PREDICTION HISTORY
     # =====================================================
 
-    def get_history(self, user_id: str):
+    def get_history(
+        self,
+        user_id: str,
+    ):
 
         predictions = self._get_predictions_collection()
 
         history = list(
             predictions.find(
-                {"user_id": user_id},
-                {"_id": 0},
-            ).sort("created_at", -1)
+                {
+                    "user_id": user_id
+                },
+                {
+                    "_id": 0
+                },
+            ).sort(
+                "created_at",
+                -1,
+            )
         )
 
         return history
@@ -194,9 +277,17 @@ class PredictionService:
 
         predictions = self._get_predictions_collection()
 
+        try:
+            object_id = ObjectId(
+                prediction_id
+            )
+
+        except (InvalidId, TypeError):
+            return False
+
         result = predictions.delete_one(
             {
-                "_id": ObjectId(prediction_id)
+                "_id": object_id
             }
         )
 
@@ -204,7 +295,7 @@ class PredictionService:
 
 
 # =====================================================
-# Singleton Instance
+# SINGLETON INSTANCE
 # =====================================================
 
 prediction_service = PredictionService()
