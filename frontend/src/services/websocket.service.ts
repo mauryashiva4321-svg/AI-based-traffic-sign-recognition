@@ -28,36 +28,69 @@ class WebSocketService {
     this.messageCallback = onMessage;
     this.statusCallback = onStatus;
 
-    const protocol =
-      window.location.protocol === "https:" ? "wss" : "ws";
+    // Get deployed backend URL from Vercel environment variable
+    const apiUrl = import.meta.env.VITE_API_URL;
 
-    const host =
-      import.meta.env.VITE_API_HOST ?? "localhost:8000";
+    if (!apiUrl) {
+      console.error("❌ VITE_API_URL is not configured");
+      this.statusCallback?.(false);
+      return;
+    }
 
-    const url = `${protocol}://${host}/ws/live?token=${token}`;
+    // Convert HTTP/HTTPS URL to WS/WSS
+    const wsUrl = apiUrl
+      .replace(/^https:\/\//, "wss://")
+      .replace(/^http:\/\//, "ws://");
+
+    // Backend WebSocket endpoint
+    const url = `${wsUrl}/ws/live?token=${encodeURIComponent(token)}`;
+
+    console.log("🔌 Connecting WebSocket:", url);
 
     this.socket = new WebSocket(url);
+
+    // ==========================================
+    // CONNECTED
+    // ==========================================
 
     this.socket.onopen = () => {
       console.log("✅ WebSocket Connected");
       this.statusCallback?.(true);
     };
 
+    // ==========================================
+    // MESSAGE
+    // ==========================================
+
     this.socket.onmessage = (event) => {
       try {
         const data: DetectionResponse = JSON.parse(event.data);
+
         this.messageCallback?.(data);
       } catch (error) {
         console.error("❌ WebSocket Parse Error:", error);
       }
     };
 
+    // ==========================================
+    // ERROR
+    // ==========================================
+
     this.socket.onerror = (error) => {
       console.error("❌ WebSocket Error:", error);
+      this.statusCallback?.(false);
     };
 
-    this.socket.onclose = () => {
-      console.log("🔌 WebSocket Closed");
+    // ==========================================
+    // CLOSED
+    // ==========================================
+
+    this.socket.onclose = (event) => {
+      console.log(
+        "🔌 WebSocket Closed:",
+        event.code,
+        event.reason
+      );
 
       this.statusCallback?.(false);
 
@@ -81,6 +114,10 @@ class WebSocketService {
           image: base64Image,
         })
       );
+    } else {
+      console.warn(
+        "⚠️ WebSocket is not connected. Frame not sent."
+      );
     }
   }
 
@@ -94,7 +131,12 @@ class WebSocketService {
     }
 
     this.reconnectTimer = window.setTimeout(() => {
-      if (this.messageCallback) {
+      if (
+        this.shouldReconnect &&
+        this.messageCallback
+      ) {
+        console.log("🔄 Reconnecting WebSocket...");
+
         this.connect(
           token,
           this.messageCallback,
@@ -116,8 +158,12 @@ class WebSocketService {
       this.reconnectTimer = null;
     }
 
-    this.socket?.close();
-    this.socket = null;
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+
+    console.log("🔌 WebSocket disconnected manually");
   }
 
   // ==========================================
@@ -125,10 +171,13 @@ class WebSocketService {
   // ==========================================
 
   isConnected() {
-    return this.socket?.readyState === WebSocket.OPEN;
+    return (
+      this.socket?.readyState === WebSocket.OPEN
+    );
   }
 }
 
-export const websocketService = new WebSocketService();
+export const websocketService =
+  new WebSocketService();
 
 export default websocketService;
