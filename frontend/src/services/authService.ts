@@ -13,7 +13,7 @@ export interface LoginData {
 
 export const signup = async (data: SignupData) => {
   const response = await api.post(
-    "/auth/signup",
+    "/api/v1/auth/signup",
     data
   );
 
@@ -22,7 +22,7 @@ export const signup = async (data: SignupData) => {
 
 export const login = async (data: LoginData) => {
   const response = await api.post(
-    "/auth/login",
+    "/api/v1/auth/login",
     data
   );
 
@@ -31,7 +31,7 @@ export const login = async (data: LoginData) => {
 
 export const getProfile = async () => {
   const response = await api.get(
-    "/users/profile"
+    "/api/v1/users/profile"
   );
 
   return response.data;
